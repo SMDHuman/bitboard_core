@@ -1,4 +1,4 @@
-# Bitboard Core
+# LOTP Bitboard Core
 
 This is a single header library to simulate and render Bitboard circuits on anywhere you want. 
 
