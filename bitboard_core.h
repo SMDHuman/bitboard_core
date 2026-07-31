@@ -10,169 +10,110 @@
 //-----------------------------------------------------------------------------
 uint32_t bb_colors_rgb[8][2] = {
   {0x000000, 0x000000}, // BB_BLANK
-  {0x7F0000, 0xFF0000}, // BB_RED
   {0x00007F, 0x0000FF}, // BB_BLUE
   {0x007F00, 0x00FF00}, // BB_GREEN
-  {0x7F7F00, 0xFFFF00}, // BB_YELLOW
   {0x007F7F, 0x00FFFF}, // BB_CYAN
+  {0x7F0000, 0xFF0000}, // BB_RED
   {0x7F007F, 0xFF00FF}, // BB_MAGENTA
+  {0x7F7F00, 0xFFFF00}, // BB_YELLOW
   {0x7F7F7F, 0xFFFFFF}, // BB_WHITE
 };
 
 typedef enum{
   BB_BLANK = 0,
-  BB_RED = 1,
-  BB_BLUE = 2,
-  BB_GREEN = 3,
-  BB_YELLOW = 4,
-  BB_CYAN = 5,
-  BB_MAGENTA = 6,
-  BB_WHITE = 7,
-} WIRE_COLORS;
+  BB_BLUE,
+  BB_GREEN,
+  BB_CYAN,
+  BB_RED,
+  BB_MAGENTA,
+  BB_YELLOW,
+  BB_WHITE,
+} BB_COLORS;
 
-//-----------------------------------------------------------------------------
-typedef struct{
-  uint8_t wire_colors : 3; // WIRE_COLORS
-  uint8_t state       : 1; // 0 = off, 1 = on
-  uint8_t _next_state : 2; // For internal use only, do not modify directly. 0: not updating, 1: update to on, 2: update to off
-} bb_wire_t;
+#define bb_index_t uint32_t 
 
 typedef struct{
-  enum{BB_NOT, BB_DIODE} type : 2; // gate type BB_NOT: 0, BB_DIODE: 1
-  uint8_t num_inputs          : 3;
-  uint8_t num_outputs         : 3;
-  bb_wire_t** inputs;              // array of input wires (pointers to wire_t)
-  bb_wire_t** outputs;             // array of output wires (pointers to wire_t)
-} bb_gate_t;
-
-typedef struct{
-  enum{BB_PIX_BLANK, BB_PIX_WIRE, BB_PIX_GATE_OUT, BB_PIX_GATE_IN} type; // pixel type: 0 = blank, 1 = wire, 2 = gate output, 3 = gate input
-  union{
-    bb_wire_t* wire;          // pointer to wire if type == 1
-    bb_gate_t* gate;          // pointer to gate if type == 2
-  };
+  BB_COLORS  type : 3; // 3 bits for type
+  bb_index_t index: sizeof(bb_index_t)*8 - 3; // Remaining bits for index
 } bb_pixel_t;
 
+//-----------------------------------------------------------------------------
 typedef struct{
   uint16_t width;
   uint16_t height;
   bb_pixel_t* pixel_map;      // pixel map of the circuit [width * height]
-  bb_wire_t* wires;           // array of wires, null terminated
-  uint32_t num_wires;         // number of wires
-  bb_gate_t* gates;           // array of gates, null terminated
-  uint32_t num_gates;         // number of gates
+  uint8_t* wires_state;       // sizeof (num_wires / 8) bytes
+  uint8_t* next_wires_state;  // sizeof (num_wires / 8) bytes
+  uint32_t num_wires;         // number of bits used for wires         
+  bb_index_t* not_gates[2];   // array of NOT gate input and output wire indices
+  uint32_t num_not;           // number of not gates
+  bb_index_t* diodes[2];      // array of diode input and output wire indices
+  uint32_t num_diodes;        // number of diodes
+
+  // Configuration flags
+  void* image;                 // pointer to the original image data
   uint8_t reset_flag : 1;     // flag to reset the circuit
 }bitboard_t;
 
-typedef struct {
-    uint8_t *data;          // image raw rgb8 data
-    int width;              // image base width
-    int height;             // image base height
-} bb_image_t;
+//-----------------------------------------------------------------------------
+// This function is for drawing the pixels on the screen while rendering the circuit
+extern void bb_draw_pixel(uint16_t x, uint16_t y, uint32_t rgb8, void* image);
+// This function is for getting the pixels from circuit image, runs just in initialization
+extern uint32_t bb_get_pixel(uint16_t x, uint16_t y, void* image);
 
 //-----------------------------------------------------------------------------
-extern void bb_put_pixel(uint16_t x, uint16_t y, uint32_t rgb8);
-
-//-----------------------------------------------------------------------------
-bitboard_t* new_bitboard(bb_image_t* image);
+bitboard_t* new_bitboard(void* image, uint16_t width, uint16_t height);
 void free_bitboard(bitboard_t* board);
-void bb_render(bitboard_t* board);
+void bb_render(bitboard_t* board, void* image);
 void bb_tick(bitboard_t* board);
+bool bb_get_wire_at(bitboard_t* board, uint16_t x, uint16_t y);
+void bb_set_wire_at(bitboard_t* board, uint16_t x, uint16_t y, bool state);
 
 //-----------------------------------------------------------------------------
-static void _bb_preprocess_image(bb_image_t* image);
-static WIRE_COLORS _bb_get_wire_color(uint32_t rgb8);
-static void _bb_append_wire(bitboard_t* board, bb_wire_t* wire);
-static void _bb_append_gate(bitboard_t* board, bb_gate_t* gate);
-static void _bb_append_input_to_gate(bb_gate_t* gate, bb_wire_t* input_wire);
-static void _bb_append_output_to_gate(bb_gate_t* gate, bb_wire_t* output_wire);
-static bb_wire_t* _bb_peek_wire(bitboard_t* board, uint16_t x, uint16_t y);
-static bb_wire_t* _bb_peek_adjacent_wires(bitboard_t* board, uint16_t x, uint16_t y, WIRE_COLORS color);
-static bb_gate_t* _bb_peek_adjacent_gates(bitboard_t* board, uint16_t x, uint16_t y);
+static BB_COLORS _bb_get_pixel_color(bitboard_t* board, uint16_t x, uint16_t y);
+static bool      _bb_get_pixel_state(bitboard_t* board, uint16_t x, uint16_t y);
+static BB_COLORS _bb_get_adjacent_pixel_color(bitboard_t* board, uint16_t x, uint16_t y, uint8_t dir);
+static bb_pixel_t* _bb_get_adjacent_pixel_map(bitboard_t* board, uint16_t x, uint16_t y, uint8_t dir);
+static void _bb_compile_wires(bitboard_t* board);
+static void _bb_weld_crossing_wires(bitboard_t* board);
+static void _bb_normalize_wire_indices(bitboard_t* board);
+static void _bb_compile_gates(bitboard_t* board);
+static void _bb_change_pixels_index(bitboard_t* board, bb_index_t current_index, bb_index_t new_index);
+static bool _bb_is_pixel_wire(bb_pixel_t* pixel);
+static bool _bb_get_wire_state(bitboard_t* board, bb_index_t index);
+// Debug functions
+static void _bb_print_pixel_map(bitboard_t* board);
+static void _bb_print_gate_connections(bitboard_t* board);
 
 #ifdef BITBOARD_CORE_IMPLEMENTATION
 //-----------------------------------------------------------------------------
-bitboard_t* new_bitboard(bb_image_t* image){
+bitboard_t* new_bitboard(void* image, uint16_t width, uint16_t height){
   bitboard_t* board = (bitboard_t*)calloc(1, sizeof(bitboard_t));
-  board->width = image->width;
-  board->height = image->height;
-  board->reset_flag = 1;
+  board->reset_flag = 0;
+  board->image = image;
+  board->width = width;
+  board->height = height;
   //...
-  _bb_preprocess_image(image);
-  //... 
-  board->pixel_map = (bb_pixel_t*)calloc(image->width * image->height, sizeof(bb_pixel_t));
-  for(int y = 0; y < image->height; y++){
-    for(int x = 0; x < image->width; x++){
-      size_t index = y * image->width + x;
-      size_t index_rgb = index * 3; // 3 bytes per pixel (RGB)
-      uint32_t rgb = (image->data[index_rgb] << 16) | (image->data[index_rgb + 1] << 8) | image->data[index_rgb + 2];
-      WIRE_COLORS color_index = _bb_get_wire_color(rgb);
-      switch(color_index){
-        case BB_BLANK:
-          board->pixel_map[index].type = BB_PIX_BLANK;
-          break;
-        case BB_RED:
-        case BB_BLUE:
-        case BB_GREEN:{
-          board->pixel_map[index].type = color_index == BB_RED ? BB_PIX_GATE_IN : BB_PIX_GATE_OUT;
-          bb_gate_t* gate = _bb_peek_adjacent_gates(board, x, y);
-          if(gate == NULL){
-            bb_gate_t new_gate = {0};
-            _bb_append_gate(board, &new_gate);
-            gate = &board->gates[board->num_gates - 1];
-          }
-          if(color_index == BB_BLUE) gate->type = BB_NOT;
-          else if(color_index == BB_GREEN) gate->type = BB_DIODE;
-          board->pixel_map[index].gate = gate;
-        }break;
-        case BB_YELLOW:
-        case BB_CYAN:
-        case BB_MAGENTA:
-        case BB_WHITE: {
-          board->pixel_map[index].type = BB_PIX_WIRE;
-          bb_wire_t* wire = _bb_peek_adjacent_wires(board, x, y, color_index);
-          if(wire != NULL){
-            board->pixel_map[index].wire = wire;
-          }
-          else{
-            bb_wire_t new_wire = { .wire_colors = color_index, .state = (rgb == bb_colors_rgb[color_index][1]) ? 1 : 0, ._next_state = 0 };
-            _bb_append_wire(board, &new_wire);
-            board->pixel_map[index].wire = &board->wires[board->num_wires - 1];
-          }
-        }break;
-      }
-    }
-  }
-
-  // Link wires to gates
-  for(int y = 0; y < image->height; y++){
-    for(int x = 0; x < image->width; x++){
-      size_t index = y * image->width + x;
-      if(board->pixel_map[index].type == BB_PIX_GATE_OUT){
-        bb_gate_t* gate = board->pixel_map[index].gate;
-        int sides[4][2] = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}; // Up, Down, Left, Right
-        for(int i = 0; i < 4; i++){
-          int adj_x = x + sides[i][0];
-          int adj_y = y + sides[i][1];
-          bb_wire_t* wire = _bb_peek_wire(board, adj_x, adj_y);
-          if(wire != NULL){
-            printf("Linking gate output at (%d, %d) to wire at (%d, %d)\n", x, y, adj_x, adj_y);
-            _bb_append_output_to_gate(gate, wire);
-          }
-        }
-      }
-      else if(board->pixel_map[index].type == BB_PIX_GATE_IN){
-        bb_gate_t* gate = board->pixel_map[index].gate;
-        int sides[4][2] = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}; // Up, Down, Left, Right
-        for(int i = 0; i < 4; i++){
-          int adj_x = x + sides[i][0];
-          int adj_y = y + sides[i][1];
-          bb_wire_t* wire = _bb_peek_wire(board, adj_x, adj_y);
-          if(wire != NULL){
-            printf("Linking gate input at (%d, %d) to wire at (%d, %d)\n", x, y, adj_x, adj_y);
-            _bb_append_input_to_gate(gate, wire);
-          }
-        }
+  board->pixel_map = (bb_pixel_t*)calloc(width * height, sizeof(bb_pixel_t));
+  //...
+  _bb_compile_wires(board);
+  _bb_weld_crossing_wires(board);
+  _bb_normalize_wire_indices(board);
+  _bb_compile_gates(board);
+  // _bb_print_pixel_map(board);
+  // _bb_print_gate_connections(board);
+  // printf("Bitboard created with %d wires and %d gates.\n", board->num_wires, board->num_not + board->num_diodes);
+  // Allocate memory for wires state
+  board->wires_state = (uint8_t*)calloc((board->num_wires + 7) / 8, sizeof(uint8_t));
+  board->next_wires_state = (uint8_t*)calloc((board->num_wires + 7) / 8, sizeof(uint8_t));
+  // memset(board->wires_state, 1, (board->num_wires + 7) / 8);
+  // memset(board->next_wires_state, 1, (board->num_wires + 7) / 8);
+  // Initialize the wires state from image pixel values
+  for( uint16_t y = 0; y < height; y++){
+    for(uint16_t x = 0; x < width; x++){
+      if(_bb_is_pixel_wire(&board->pixel_map[y * width + x])){
+        bool state = _bb_get_pixel_state(board, x, y);
+        bb_set_wire_at(board, x, y, state);
       }
     }
   }
@@ -181,34 +122,27 @@ bitboard_t* new_bitboard(bb_image_t* image){
 //-----------------------------------------------------------------------------
 void free_bitboard(bitboard_t* board){
   if(board){
+    free(board->wires_state);
+    free(board->next_wires_state);
+    free(board->pixel_map);
     free(board);
   }
 }
 //-----------------------------------------------------------------------------
-void bb_render(bitboard_t* board){
-  for(int y = 0; y < board->height; y++){
-    for(int x = 0; x < board->width; x++){
-      size_t index = y * board->width + x;
-      bb_pixel_t* pixel = &board->pixel_map[index];
-      if(pixel->type == BB_PIX_WIRE){ // wire
-        bb_wire_t* wire = pixel->wire;
-        uint32_t color = bb_colors_rgb[wire->wire_colors][wire->state];
-        bb_put_pixel(x, y, color);
-      }
-      else if(pixel->type == BB_PIX_GATE_OUT){ // gate output
-          bb_gate_t* gate = pixel->gate;
-          if(gate->type == 0){ // BB_NOT
-            bb_put_pixel(x, y, bb_colors_rgb[BB_BLUE][1]);
-          }
-          else if(gate->type == 1){ // BB_DIODE
-            bb_put_pixel(x, y, bb_colors_rgb[BB_GREEN][1]);
-          }
-        } 
-      else if(pixel->type == BB_PIX_GATE_IN){ // gate input
-        bb_put_pixel(x, y, bb_colors_rgb[BB_RED][1]);
-      }
-      else { // blank
-        bb_put_pixel(x, y, bb_colors_rgb[BB_BLANK][0]);
+void bb_render(bitboard_t* board, void* image){
+  for (uint16_t y = 0; y < board->height; y++){
+    for (uint16_t x = 0; x < board->width; x++){
+      bb_pixel_t pixel = board->pixel_map[y * board->width + x];
+      if(pixel.type != BB_BLANK){
+        uint8_t state;
+        if(pixel.type == BB_RED || pixel.type == BB_BLUE || pixel.type == BB_GREEN){
+          // Gates are always drawn in their original color
+          state = 1;
+        }else{
+          state = _bb_get_wire_state(board, pixel.index);
+        }
+        uint32_t rgb8 = bb_colors_rgb[pixel.type][state];
+        bb_draw_pixel(x, y, rgb8, image);
       }
     }
   }
@@ -216,210 +150,403 @@ void bb_render(bitboard_t* board){
 
 //-----------------------------------------------------------------------------
 void bb_tick(bitboard_t* board){
-  for(int i = 0; i < board->num_gates; i++){
-    bb_gate_t* gate = &board->gates[i];
-    uint8_t output_state = 0;
-    if(gate->type == 0){ // BB_NOT
-      for(int j = 0; j < gate->num_inputs; j++){
-        bb_wire_t* input_wire = gate->inputs[j];
-        output_state += input_wire->state;
-      }
-      output_state = (output_state > 0) ? 0 : 1;
+  // Reset the circuit if the reset flag is set
+  if(board->reset_flag){
+    for (uint32_t i = 0; i < (board->num_wires + 7) / 8; i++){
+      board->wires_state[i] = 0;
+      board->next_wires_state[i] = 0;
     }
-    else if(gate->type == 1){ // BB_DIODE
-      for(int j = 0; j < gate->num_inputs; j++){
-        bb_wire_t* input_wire = gate->inputs[j];
-        output_state += input_wire->state;
-      }
-      output_state = (output_state > 0) ? 1 : 0;
-    }
-    for(int j = 0; j < gate->num_outputs; j++){
-      bb_wire_t* output_wire = gate->outputs[j];
-      output_wire->_next_state = output_state == 1 ? 1 : 2; // 1: update to on, 2: update to off
+    board->reset_flag = 0;
+  }
+  // Process NOT gates
+  for(uint32_t i = 0; i < board->num_not; i++){
+    bb_index_t input_wire = board->not_gates[0][i];
+    bb_index_t output_wire = board->not_gates[1][i];
+    bool input_state = _bb_get_wire_state(board, input_wire);
+    if(input_state){
+      // Input is HIGH, output should be LOW
+      board->next_wires_state[(output_wire) / 8] &= ~(1 << ((output_wire) % 8));
+    }else{
+      // Input is LOW, output should be HIGH
+      board->next_wires_state[(output_wire) / 8] |= (1 << ((output_wire) % 8));
     }
   }
-  // Update wire states
-  for(int i = 0; i < board->num_wires; i++){
-    bb_wire_t* wire = &board->wires[i];
-    if(wire->_next_state == 1){
-      wire->state = 1;
+
+  // Process Diodes
+  for(uint32_t i = 0; i < board->num_diodes; i++){
+    bb_index_t input_wire = board->diodes[0][i];
+    bb_index_t output_wire = board->diodes[1][i];
+    bool input_state = _bb_get_wire_state(board, input_wire);
+    if(input_state){
+      // Input is HIGH, output should be HIGH
+      board->next_wires_state[(output_wire) / 8] |= (1 << ((output_wire) % 8));
+    }else{
+      // Input is LOW, output should be LOW
+      board->next_wires_state[(output_wire) / 8] &= ~(1 << ((output_wire) % 8));
     }
-    else if(wire->_next_state == 2){
-      wire->state = 0;
-    }
-    else if(board->reset_flag){
-      wire->state = 0; // Reset all wires to off
-    }
-    wire->_next_state = 0; // Reset next state
   }
-  if(board->reset_flag) board->reset_flag = 0; // Clear reset flag after processing
+
+  // Update the wires state for the next tick
+  for (uint32_t i = 0; i < (board->num_wires + 7) / 8; i++){
+    board->wires_state[i] = board->next_wires_state[i];
+  }
 }
 //-----------------------------------------------------------------------------
-static void _bb_preprocess_image(bb_image_t* image){
-  // Adjust the colors to nearest expected color match.
-  for(int y = 0; y < image->height; y++){
-    for(int x = 0; x < image->width; x++){
-      size_t index = (y * image->width + x) * 3; // 3 bytes per pixel (RGB)s
-      uint8_t r = image->data[index];
-      uint8_t g = image->data[index + 1];
-      uint8_t b = image->data[index + 2];
-      // Find the closest rgb values, 0,127,255
-      r = (r < 64) ? 0 : (r < 192) ? 127 : 255;
-      g = (g < 64) ? 0 : (g < 192) ? 127 : 255;
-      b = (b < 64) ? 0 : (b < 192) ? 127 : 255;
-      image->data[index] = r;
-      image->data[index + 1] = g;
-      image->data[index + 2] = b;
+bool bb_get_wire_at(bitboard_t* board, uint16_t x, uint16_t y){
+  if(x >= board->width || y >= board->height) return false;
+  bb_pixel_t pixel = board->pixel_map[y * board->width + x];
+  if(_bb_is_pixel_wire(&pixel)){
+    return _bb_get_wire_state(board, pixel.index);
+  }
+  return false;
+}
+//-----------------------------------------------------------------------------
+void bb_set_wire_at(bitboard_t* board, uint16_t x, uint16_t y, bool state){
+  if(x >= board->width || y >= board->height) return;
+  bb_pixel_t pixel = board->pixel_map[y * board->width + x];
+  if(_bb_is_pixel_wire(&pixel)){
+    if(state){
+      board->wires_state[(pixel.index) / 8] |= (1 << ((pixel.index) % 8));
+      board->next_wires_state[(pixel.index) / 8] |= (1 << ((pixel.index) % 8));
+    }else{
+      board->wires_state[(pixel.index) / 8] &= ~(1 << ((pixel.index) % 8));
+      board->next_wires_state[(pixel.index) / 8] &= ~(1 << ((pixel.index) % 8));
     }
+  }
+}
+//-----------------------------------------------------------------------------
+static BB_COLORS _bb_get_pixel_color(bitboard_t* board, uint16_t x, uint16_t y){
+  uint32_t rgb8 = bb_get_pixel(x, y, board->image);
+  uint8_t r = rgb8 >> 16;
+  uint8_t g = (rgb8 >> 8) & 0xFF;
+  uint8_t b = rgb8 & 0xFF;
+  // Find the closest rgb values, 0,127,255
+  r = (r < 64) ? 0 : (r < 192) ? 127 : 255;
+  g = (g < 64) ? 0 : (g < 192) ? 127 : 255;
+  b = (b < 64) ? 0 : (b < 192) ? 127 : 255;
+  BB_COLORS color = (BB_COLORS)((b&0x01) | (g&0x02) | (r&0x04));
+  return color;
+}
+//-----------------------------------------------------------------------------
+static bool _bb_get_pixel_state(bitboard_t* board, uint16_t x, uint16_t y){
+  uint32_t rgb8 = bb_get_pixel(x, y, board->image);
+  uint8_t r = rgb8 >> 16;
+  uint8_t g = (rgb8 >> 8) & 0xFF;
+  uint8_t b = rgb8 & 0xFF;
+  if(r == 255 || g == 255 || b == 255){
+    return true;
+  }
+  return false;
+}
+//-----------------------------------------------------------------------------
+static BB_COLORS _bb_get_adjacent_pixel_color(bitboard_t* board, uint16_t x, uint16_t y, uint8_t dir){
+  // dir: 0 = up, 1 = right, 2 = down, 3 = left
+  if(dir == 0 && y > 0){
+    return _bb_get_pixel_color(board, x, y-1);
+  }else if(dir == 1 && x < board->width - 1){
+    return _bb_get_pixel_color(board, x+1, y);
+  }else if(dir == 2 && y < board->height - 1){
+    return _bb_get_pixel_color(board, x, y+1);
+  }else if(dir == 3 && x > 0){
+    return _bb_get_pixel_color(board, x-1, y);
+  }
+  return BB_BLANK;
+}
+//-----------------------------------------------------------------------------
+static bb_pixel_t* _bb_get_adjacent_pixel_map(bitboard_t* board, uint16_t x, uint16_t y, uint8_t dir){
+  // dir: 0 = up, 1 = right, 2 = down, 3 = left
+  if(dir == 0 && y > 0){
+    return &board->pixel_map[(y-1) * board->width + x];
+  }else if(dir == 1 && x < board->width - 1){
+    return &board->pixel_map[y * board->width + (x+1)];
+  }else if(dir == 2 && y < board->height - 1){
+    return &board->pixel_map[(y+1) * board->width + x];
+  }else if(dir == 3 && x > 0){
+    return &board->pixel_map[y * board->width + (x-1)];
+  }
+  return NULL;
+}
+//-----------------------------------------------------------------------------
+static void _bb_compile_wires(bitboard_t* board){
+  uint32_t wire_count = 1;
+  for (uint16_t y = 0; y < board->height; y++){
+    for (uint16_t x = 0; x < board->width; x++){
+      BB_COLORS color = _bb_get_pixel_color(board, x, y);
+      if(color == BB_WHITE || color == BB_CYAN || color == BB_MAGENTA || color == BB_YELLOW){
+        if(board->pixel_map[y * board->width + x].type == 0){
+          // This is a wire pixel, assign it a wire index
+          bb_pixel_t* pixel = &board->pixel_map[y * board->width + x];
+          pixel->type = color; // Wire type
+          
+          for (uint8_t dir = 0; dir < 4; dir++){
+            bb_pixel_t* adj_pixel = _bb_get_adjacent_pixel_map(board, x, y, dir);
+            if(adj_pixel){
+              if(adj_pixel->type == color){
+                if(pixel->index != 0 ){
+                  if(pixel->index < adj_pixel->index){
+                    _bb_change_pixels_index(board, adj_pixel->index, pixel->index);
+                  }else if(pixel->index > adj_pixel->index){
+                    _bb_change_pixels_index(board, pixel->index, adj_pixel->index);
+                  }
+                }else{
+                  pixel->index = adj_pixel->index;
+                }
+              }
+            }
+          }
+          if(pixel->index == 0){
+            // This is a new wire, assign it a new index
+            pixel->index = wire_count++;
+          }
+        }
+      }
+    }
+  }
+  board->num_wires = wire_count;
+}
+
+//-----------------------------------------------------------------------------
+static void _bb_weld_crossing_wires(bitboard_t* board){
+  for (uint16_t y = 0; y < board->height; y++){
+    for (uint16_t x = 0; x < board->width; x++){
+      BB_COLORS color = _bb_get_pixel_color(board, x, y);
+      // Wire crossing
+      uint8_t is_gate = 0;
+      if(color == BB_RED){
+        for (uint8_t dir = 0; dir < 4; dir++){
+          BB_COLORS adj_color = _bb_get_adjacent_pixel_color(board, x, y, dir);
+          if(adj_color == BB_BLUE || adj_color == BB_GREEN){
+            is_gate = 1;
+            break;
+          }
+        }
+        if(!is_gate){
+          for (uint8_t dir = 0; dir < 2; dir++){
+            bb_pixel_t* side_a = _bb_get_adjacent_pixel_map(board, x, y, (dir+2)%4);
+            bb_pixel_t* side_b = _bb_get_adjacent_pixel_map(board, x, y, dir);
+            if(side_a && side_b){
+              if(_bb_is_pixel_wire(side_a) && _bb_is_pixel_wire(side_b)){
+                if(side_a->index < side_b->index){
+                  _bb_change_pixels_index(board, side_b->index, side_a->index);
+                }else if(side_a->index > side_b->index){
+                  _bb_change_pixels_index(board, side_a->index, side_b->index);
+                }
+              }
+            }
+          }
+        }
+      }
+      if(color == BB_BLUE || color == BB_GREEN || (color == BB_RED && is_gate)){
+        // Connect all wires around the gate if there is more then one wire
+        bb_index_t smallest = _bb_get_adjacent_pixel_map(board, x, y, 0)->index;
+        uint8_t wire_count = 0;
+        for (uint8_t dir = 0; dir < 4; dir++){
+          bb_pixel_t* side = _bb_get_adjacent_pixel_map(board, x, y, dir);
+          if(side && _bb_is_pixel_wire(side)){
+            if(side->index < smallest){
+              smallest = side->index;
+            }
+            wire_count++;
+          }
+        }
+        if(wire_count > 1){
+          for (uint8_t dir = 0; dir < 4; dir++){
+            bb_pixel_t* side = _bb_get_adjacent_pixel_map(board, x, y, dir);
+            if(side && _bb_is_pixel_wire(side)){
+              _bb_change_pixels_index(board, side->index, smallest);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+//-----------------------------------------------------------------------------
+// After welding wires, some indices may be skipped, this function will normalize the indices to be sequential
+static void _bb_normalize_wire_indices(bitboard_t* board){
+  bb_index_t* index_map = (bb_index_t*)calloc(board->num_wires + 1, sizeof(bb_index_t));
+  bb_index_t new_index = 1;
+  for (uint16_t y = 0; y < board->height; y++){
+    for (uint16_t x = 0; x < board->width; x++){
+      bb_pixel_t* pixel = &board->pixel_map[y * board->width + x];
+      if(_bb_is_pixel_wire(pixel)){
+        if(index_map[pixel->index] == 0){
+          index_map[pixel->index] = new_index++;
+        }
+        pixel->index = index_map[pixel->index]; 
+      }
+    }
+  }
+  free(index_map);
+  board->num_wires = new_index;
+}
+//-----------------------------------------------------------------------------
+static void _bb_compile_gates(bitboard_t* board){
+  for(uint16_t y = 0; y < board->height; y++){
+    for (uint16_t x = 0; x < board->width; x++){
+      BB_COLORS color = _bb_get_pixel_color(board, x, y);
+      if(color == BB_BLUE) board->num_not++;
+      else if(color == BB_GREEN) board->num_diodes++;
+    }
+  }
+  board->not_gates[0] = (bb_index_t*)calloc(board->num_not, sizeof(bb_index_t));
+  board->not_gates[1] = (bb_index_t*)calloc(board->num_not, sizeof(bb_index_t));
+  board->diodes[0] = (bb_index_t*)calloc(board->num_diodes, sizeof(bb_index_t));
+  board->diodes[1] = (bb_index_t*)calloc(board->num_diodes, sizeof(bb_index_t));
+
+  bb_index_t not_count = 0;
+  bb_index_t diode_count = 0;
+  for(uint16_t y = 0; y < board->height; y++){
+    for (uint16_t x = 0; x < board->width; x++){
+      BB_COLORS color = _bb_get_pixel_color(board, x, y);
+      if(color == BB_BLUE || color == BB_GREEN){
+        board->pixel_map[y * board->width + x].type = color;
+        // Check if its connected to any wire as output
+        bb_index_t output_index = 0;
+        for (uint8_t dir = 0; dir < 4; dir++){
+          bb_pixel_t* adj_pixel = _bb_get_adjacent_pixel_map(board, x, y, dir);
+          if(adj_pixel && _bb_is_pixel_wire(adj_pixel)){
+            output_index = adj_pixel->index;
+            break;
+          }
+        }
+        uint8_t input_found = 0;
+        for (uint8_t dir = 0; dir < 4; dir++){
+          bb_pixel_t* input_pixel = _bb_get_adjacent_pixel_map(board, x, y, dir);
+          // Link to existing input gate
+          if(input_pixel->type == BB_RED){
+            board->pixel_map[y * board->width + x].index = input_pixel->index;
+            if(color == BB_BLUE) board->not_gates[1][input_pixel->index] = output_index;
+            else if(color == BB_GREEN) board->diodes[1][input_pixel->index] = output_index;
+            input_found = 1;
+            break;
+          }
+        }
+        if(!input_found){
+          // This is a new NOT gate, assign it a new index
+          board->pixel_map[y * board->width + x].index = not_count;
+          if(color == BB_BLUE) {board->not_gates[1][not_count] = output_index; not_count++;}
+          else if(color == BB_GREEN) {board->diodes[1][diode_count] = output_index; diode_count++;}
+        }
+      }
+      else if(color == BB_RED){
+        board->pixel_map[y * board->width + x].type = BB_RED;
+        // Check if this is crossing
+        uint8_t gate_found = 0;
+        for (uint8_t dir = 0; dir < 4; dir++){
+          BB_COLORS adj_color = _bb_get_adjacent_pixel_color(board, x, y, dir);
+          if(adj_color == BB_BLUE || adj_color == BB_GREEN) gate_found = 1;
+        }
+        if(!gate_found) continue; // Not a gate, skip
+        // Check if this is connected to any wire as input
+        bb_index_t input_index = 0;
+        for (uint8_t dir = 0; dir < 4; dir++){
+          bb_pixel_t* adj_pixel = _bb_get_adjacent_pixel_map(board, x, y, dir);
+          if(adj_pixel && _bb_is_pixel_wire(adj_pixel)){
+            input_index = adj_pixel->index;
+            break;
+          }
+        }
+        uint8_t output_found = 0;
+        for (uint8_t dir = 0; dir < 4; dir++){
+          bb_pixel_t* output_pixel = _bb_get_adjacent_pixel_map(board, x, y, dir);
+          // Link to existing output gate
+          if(output_pixel->type == BB_BLUE){
+            board->pixel_map[y * board->width + x].index = output_pixel->index;
+            board->not_gates[0][output_pixel->index] = input_index;
+            output_found = 1;
+            break;
+          }
+          if(output_pixel->type == BB_GREEN){
+            board->pixel_map[y * board->width + x].index = output_pixel->index;
+            board->diodes[0][output_pixel->index] = input_index;
+            output_found = 1;
+            break;
+          }
+        }
+        if(!output_found){
+          // This is a new gate input, assign it a new index, check if its a NOT or Diode gate
+          uint8_t is_not_gate = 0;
+          uint8_t is_diode_gate = 0;
+          for (uint8_t dir = 0; dir < 4; dir++){
+            BB_COLORS adj_color = _bb_get_adjacent_pixel_color(board, x, y, dir);
+            if(adj_color == BB_BLUE){
+              is_not_gate = 1;
+              break;
+            }
+            if(adj_color == BB_GREEN){
+              is_diode_gate = 1;
+              break;
+            }
+          }
+          if(is_not_gate){
+            board->pixel_map[y * board->width + x].index = not_count;
+            board->not_gates[0][not_count] = input_index;
+            not_count++;
+          }
+          if(is_diode_gate){
+            board->pixel_map[y * board->width + x].index = diode_count;
+            board->diodes[0][diode_count] = input_index;
+            diode_count++;
+          }
+        }
+      }
+    }
+  }
+}
+//-----------------------------------------------------------------------------
+static void _bb_change_pixels_index(bitboard_t* board, bb_index_t current_index, bb_index_t new_index){
+  for (uint16_t y = 0; y < board->height; y++){
+    for (uint16_t x = 0; x < board->width; x++){
+      bb_pixel_t* pixel = &board->pixel_map[y * board->width + x];
+      if(pixel->index == current_index){
+        pixel->index = new_index;
+      }
+    }
+  }
+}
+//-----------------------------------------------------------------------------
+static bool _bb_is_pixel_wire(bb_pixel_t* pixel){
+  return (pixel->type == BB_WHITE || pixel->type == BB_CYAN || pixel->type == BB_MAGENTA || pixel->type == BB_YELLOW);
+}
+//-----------------------------------------------------------------------------
+static bool _bb_get_wire_state(bitboard_t* board, bb_index_t index){
+  if(index == 0 || index > board->num_wires) return 0;
+  return (board->wires_state[(index) / 8] >> ((index) % 8)) & 0x01;
+}
+
+//-----------------------------------------------------------------------------
+static void _bb_print_pixel_map(bitboard_t* board){
+  for (uint16_t y = 0; y < board->height; y++){
+    for (uint16_t x = 0; x < board->width; x++){
+      bb_pixel_t pixel = board->pixel_map[y * board->width + x];
+      if(pixel.type == 0){
+        printf("     ");
+      } else if(pixel.type == BB_RED) { // Input Gate
+        printf("<%3d>", pixel.index);
+      } else if(pixel.type == BB_BLUE) { // Not Gate Output
+        printf("!%3d!", pixel.index);
+      } else if(pixel.type == BB_GREEN) { // Diode Output
+        printf("|%3d|", pixel.index);
+      }else{ // Wire
+        printf(" %3d ", pixel.index);
+      } 
+    }
+    printf("\n");
+  }
+}
+//-----------------------------------------------------------------------------
+static void _bb_print_gate_connections(bitboard_t* board){
+  printf("NOT Gates:\n");
+  for(uint32_t i = 0; i < board->num_not; i++){
+    printf("NOT Gate %d: Input Wire %d -> Output Wire %d\n", i, board->not_gates[0][i], board->not_gates[1][i]);
+  }
+  printf("Diodes:\n");
+  for(uint32_t i = 0; i < board->num_diodes; i++){
+    printf("Diode %d: Input Wire %d -> Output Wire %d\n", i, board->diodes[0][i], board->diodes[1][i]);
   }
 }
 
-static WIRE_COLORS _bb_get_wire_color(uint32_t rgb8){
-  for(int i = 0; i < 8; i++){
-    if(bb_colors_rgb[i][1] == rgb8 || bb_colors_rgb[i][0] == rgb8){
-      return (WIRE_COLORS)i;
-    }
-  }
-  return BB_BLANK; // Default to blank if no match
-}
-//-----------------------------------------------------------------------------
-static void _bb_append_wire(bitboard_t* board, bb_wire_t* wire){
-  if(board->wires == NULL){
-    board->wires = calloc(1, sizeof(bb_wire_t));
-    board->wires[0] = *wire;
-    board->num_wires = 1;
-  }
-  else{
-    board->wires = realloc(board->wires, (board->num_wires + 1) * sizeof(bb_wire_t));
-    if(wire != NULL) board->wires[board->num_wires] = *wire;
-    else board->wires[board->num_wires] = (bb_wire_t){0}; // Null terminate the wires array
-    board->num_wires++;
-  }
-}
-//-----------------------------------------------------------------------------
-static void _bb_append_gate(bitboard_t* board, bb_gate_t* gate){
-  if(board->gates == NULL){
-    board->gates = calloc(1, sizeof(bb_gate_t));
-    board->gates[0] = *gate;
-    board->num_gates = 1;
-  }
-  else{
-    board->gates = realloc(board->gates, (board->num_gates + 1) * sizeof(bb_gate_t));
-    if(gate != NULL) board->gates[board->num_gates] = *gate;
-    else board->gates[board->num_gates] = (bb_gate_t){0}; // Null terminate the gates array
-    board->num_gates++;
-  }
-}
-//-----------------------------------------------------------------------------
-static void _bb_append_input_to_gate(bb_gate_t* gate, bb_wire_t* input_wire){
-  if(gate->inputs == NULL){
-    gate->inputs = calloc(1, sizeof(bb_wire_t*));
-    gate->inputs[0] = input_wire;
-    gate->num_inputs = 1;
-  }
-  else{
-    gate->inputs = realloc(gate->inputs, (gate->num_inputs + 1) * sizeof(bb_wire_t*));
-    gate->inputs[gate->num_inputs] = input_wire;
-    gate->num_inputs++;
-  }
-}
-//-----------------------------------------------------------------------------
-static void _bb_append_output_to_gate(bb_gate_t* gate, bb_wire_t* output_wire){
-  if(gate->outputs == NULL){
-    gate->outputs = calloc(1, sizeof(bb_wire_t*));
-    gate->outputs[0] = output_wire;
-    gate->num_outputs = 1;
-  }
-  else{
-    gate->outputs = realloc(gate->outputs, (gate->num_outputs + 1) * sizeof(bb_wire_t*));
-    gate->outputs[gate->num_outputs] = output_wire;
-    gate->num_outputs++;
-  }
-}
-//-----------------------------------------------------------------------------
-static bb_wire_t* _bb_peek_wire(bitboard_t* board, uint16_t x, uint16_t y){
-  if(x >= board->width || y >= board->height){
-    return NULL; // Out of bounds
-  }
-  bb_pixel_t* pixel = &board->pixel_map[y * board->width + x];
-  if(pixel->type == BB_PIX_WIRE){
-    return pixel->wire;
-  }
-  return NULL; // Not a wire
-}
-//-----------------------------------------------------------------------------
-static bb_wire_t* _bb_peek_adjacent_wires(bitboard_t* board, uint16_t x, uint16_t y, WIRE_COLORS color){
-  bb_wire_t* adjacent_wires[4] = {NULL, NULL, NULL, NULL}; // Up, Down, Left, Right
-  if(y > 0){ // Up
-    bb_pixel_t* pixel = &board->pixel_map[(y - 1) * board->width + x];
-    if(pixel->type == 1 && pixel->wire->wire_colors == color){
-      adjacent_wires[0] = pixel->wire;
-    }
-  }
-  if(y < board->height - 1){ // Down
-    bb_pixel_t* pixel = &board->pixel_map[(y + 1) * board->width + x];
-    if(pixel->type == 1 && pixel->wire->wire_colors == color){
-      adjacent_wires[1] = pixel->wire;
-    }
-  }
-  if(x > 0){ // Left
-    bb_pixel_t* pixel = &board->pixel_map[y * board->width + (x - 1)];
-    if(pixel->type == 1 && pixel->wire->wire_colors == color){
-      adjacent_wires[2] = pixel->wire;
-    }
-  }
-  if(x < board->width - 1){ // Right
-    bb_pixel_t* pixel = &board->pixel_map[y * board->width + (x + 1)];
-    if(pixel->type == 1 && pixel->wire->wire_colors == color){
-      adjacent_wires[3] = pixel->wire;
-    }
-  }
-  
-  for(int i = 0; i < 4; i++){
-    if(adjacent_wires[i] != NULL){
-      return adjacent_wires[i];
-    }
-  }
-  
-  return NULL; // No adjacent wire found
-
-}
-//-----------------------------------------------------------------------------
-static bb_gate_t* _bb_peek_adjacent_gates(bitboard_t* board, uint16_t x, uint16_t y){
-  bb_gate_t* adjacent_gates[4] = {NULL, NULL, NULL, NULL}; // Up, Down, Left, Right
-  if(y > 0){ // Up
-    bb_pixel_t* pixel = &board->pixel_map[(y - 1) * board->width + x];
-    if(pixel->type == BB_PIX_GATE_OUT || pixel->type == BB_PIX_GATE_IN){
-      adjacent_gates[0] = pixel->gate;
-    }
-  }
-  if(y < board->height - 1){ // Down
-    bb_pixel_t* pixel = &board->pixel_map[(y + 1) * board->width + x];
-    if(pixel->type == BB_PIX_GATE_OUT || pixel->type == BB_PIX_GATE_IN){
-      adjacent_gates[1] = pixel->gate;
-    }
-  }
-  if(x > 0){ // Left
-    bb_pixel_t* pixel = &board->pixel_map[y * board->width + (x - 1)];
-    if(pixel->type == BB_PIX_GATE_OUT || pixel->type == BB_PIX_GATE_IN){
-      adjacent_gates[2] = pixel->gate;
-    }
-  }
-  if(x < board->width - 1){ // Right
-    bb_pixel_t* pixel = &board->pixel_map[y * board->width + (x + 1)];
-    if(pixel->type == BB_PIX_GATE_OUT || pixel->type == BB_PIX_GATE_IN){
-      adjacent_gates[3] = pixel->gate;
-    }
-  }
-  
-  for(int i = 0; i < 4; i++){
-    if(adjacent_gates[i] != NULL){
-      return adjacent_gates[i];
-    }
-  }
-  
-  return NULL; // No adjacent gate found
-}
 //-----------------------------------------------------------------------------
 #endif // BITBOARD_CORE_IMPLEMENTATION
 #endif // BITBOARD_CORE_H
