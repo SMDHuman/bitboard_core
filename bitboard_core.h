@@ -424,9 +424,17 @@ static void _bb_compile_gates(bitboard_t* board){
         }
         if(!input_found){
           // This is a new NOT gate, assign it a new index
-          board->pixel_map[y * board->width + x].index = not_count;
-          if(color == BB_BLUE) {board->not_gates[1][not_count] = output_index; not_count++;}
-          else if(color == BB_GREEN) {board->diodes[1][diode_count] = output_index; diode_count++;}
+          
+          if(color == BB_BLUE) {
+            board->pixel_map[y * board->width + x].index = not_count;
+            board->not_gates[1][not_count] = output_index; 
+            not_count++;
+          }
+          else if(color == BB_GREEN) {
+            board->pixel_map[y * board->width + x].index = diode_count;
+            board->diodes[1][diode_count] = output_index;
+            diode_count++;
+          }
         }
       }
       else if(color == BB_RED){
