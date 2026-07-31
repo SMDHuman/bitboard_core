@@ -18,9 +18,9 @@ uint32_t bb_get_pixel(uint16_t x, uint16_t y, void* image){
 
 //-----------------------------------------------------------------------------
 int main(){
-  InitWindow(320, 320, "Bitboard Core Test");
 
-  Image ray_image = LoadImage("circuits/test.png");
+  Image ray_image = LoadImage("circuits/4BitClock.png");
+  InitWindow(ray_image.width * 10, ray_image.height * 10, "Bitboard Core Test");
   bitboard_t* board = new_bitboard(&ray_image, ray_image.width, ray_image.height);
   SetTargetFPS(30);
   

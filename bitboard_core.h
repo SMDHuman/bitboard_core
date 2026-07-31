@@ -44,6 +44,7 @@ typedef struct{
   bb_pixel_t* pixel_map;      // pixel map of the circuit [width * height]
   uint8_t* wires_state;       // sizeof (num_wires / 8) bytes
   uint8_t* next_wires_state;  // sizeof (num_wires / 8) bytes
+  uint8_t* update_wires_state;  // sizeof (num_wires / 8) bytes
   uint32_t num_wires;         // number of bits used for wires         
   bb_index_t* not_gates[2];   // array of NOT gate input and output wire indices
   uint32_t num_not;           // number of not gates
@@ -106,6 +107,7 @@ bitboard_t* new_bitboard(void* image, uint16_t width, uint16_t height){
   // Allocate memory for wires state
   board->wires_state = (uint8_t*)calloc((board->num_wires + 7) / 8, sizeof(uint8_t));
   board->next_wires_state = (uint8_t*)calloc((board->num_wires + 7) / 8, sizeof(uint8_t));
+  board->update_wires_state = (uint8_t*)calloc((board->num_wires + 7) / 8, sizeof(uint8_t));
   // memset(board->wires_state, 1, (board->num_wires + 7) / 8);
   // memset(board->next_wires_state, 1, (board->num_wires + 7) / 8);
   // Initialize the wires state from image pixel values
@@ -158,18 +160,19 @@ void bb_tick(bitboard_t* board){
     }
     board->reset_flag = 0;
   }
+  for (uint32_t i = 0; i < (board->num_wires + 7) / 8; i++){
+    board->next_wires_state[i] = 0;
+  }
   // Process NOT gates
   for(uint32_t i = 0; i < board->num_not; i++){
     bb_index_t input_wire = board->not_gates[0][i];
     bb_index_t output_wire = board->not_gates[1][i];
     bool input_state = _bb_get_wire_state(board, input_wire);
-    if(input_state){
-      // Input is HIGH, output should be LOW
-      board->next_wires_state[(output_wire) / 8] &= ~(1 << ((output_wire) % 8));
-    }else{
+    if(!input_state){
       // Input is LOW, output should be HIGH
       board->next_wires_state[(output_wire) / 8] |= (1 << ((output_wire) % 8));
     }
+    board->update_wires_state[(output_wire) / 8] |= (1 << ((output_wire) % 8));
   }
 
   // Process Diodes
@@ -180,15 +183,13 @@ void bb_tick(bitboard_t* board){
     if(input_state){
       // Input is HIGH, output should be HIGH
       board->next_wires_state[(output_wire) / 8] |= (1 << ((output_wire) % 8));
-    }else{
-      // Input is LOW, output should be LOW
-      board->next_wires_state[(output_wire) / 8] &= ~(1 << ((output_wire) % 8));
     }
+    board->update_wires_state[(output_wire) / 8] |= (1 << ((output_wire) % 8));
   }
 
   // Update the wires state for the next tick
   for (uint32_t i = 0; i < (board->num_wires + 7) / 8; i++){
-    board->wires_state[i] = board->next_wires_state[i];
+    board->wires_state[i] = (board->next_wires_state[i] & board->update_wires_state[i]) | (board->wires_state[i] & ~board->update_wires_state[i]);
   }
 }
 //-----------------------------------------------------------------------------
@@ -338,7 +339,7 @@ static void _bb_weld_crossing_wires(bitboard_t* board){
       }
       if(color == BB_BLUE || color == BB_GREEN || (color == BB_RED && is_gate)){
         // Connect all wires around the gate if there is more then one wire
-        bb_index_t smallest = _bb_get_adjacent_pixel_map(board, x, y, 0)->index;
+        bb_index_t smallest = (bb_index_t)-1;
         uint8_t wire_count = 0;
         for (uint8_t dir = 0; dir < 4; dir++){
           bb_pixel_t* side = _bb_get_adjacent_pixel_map(board, x, y, dir);
