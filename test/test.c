@@ -1,14 +1,22 @@
 //-----------------------------------------------------------------------------
+// This is a test file for the bitboard_core library. It uses the raylib library
+// to create a window and render the bitboard. The user can click on the wires
+// to toggle their state. 
+// Key bindings:
+//   - Space: Tick the circuit (update the wires state)
+//   - R: Reset the circuit to its initial state
+//-----------------------------------------------------------------------------
 #include <stdio.h>
 #include <raylib.h>
 
 #define BITBOARD_CORE_IMPLEMENTATION
-#include "bitboard_core.h"
+#include "../bitboard_core.h"
 
 //-----------------------------------------------------------------------------
 void bb_draw_pixel(uint16_t x, uint16_t y, uint32_t rgb8, void* image){
   // For testing purposes, just print the pixel coordinates and color
-  DrawRectangle(x*10, y*10, 10, 10, (Color){(rgb8 >> 16) & 0xFF, (rgb8 >> 8) & 0xFF, rgb8 & 0xFF, 255});
+  Color color = GetColor(rgb8 << 8 | 0xFF); // Shift color to include alpha channel
+  DrawRectangle(x*10, y*10, 10, 10, color); 
 }
 uint32_t bb_get_pixel(uint16_t x, uint16_t y, void* image){
   Image* ray_image = (Image*)image;

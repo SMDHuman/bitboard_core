@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 //-----------------------------------------------------------------------------
 uint32_t bb_colors_rgb[8][2] = {
